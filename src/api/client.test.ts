@@ -67,4 +67,27 @@ describe("createApiClient", () => {
     );
     assert.equal(cleared, 1);
   });
+
+  it("reads either message or error from a failed JSON body", async () => {
+    const client = createApiClient({
+      baseUrl: "https://dev-gig.aameego.com/api",
+      getToken: () => null,
+      onUnauthorized: () => {},
+      transport: async () => ({
+        status: 500,
+        body: { error: "Failed to securely process and distribute verification token." },
+      }),
+    });
+
+    await assert.rejects(
+      () => client.request({ path: "/auth/send-otp", method: "POST", body: {}, auth: false }),
+      (error: unknown) => {
+        assert.equal(
+          (error as { message: string }).message,
+          "Failed to securely process and distribute verification token."
+        );
+        return true;
+      }
+    );
+  });
 });

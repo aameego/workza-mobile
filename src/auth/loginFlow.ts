@@ -26,13 +26,11 @@ const readUser = (value: unknown): AuthUser | null => {
   if ((typeof id !== "string" && typeof id !== "number") || !String(id)) return null;
   if (typeof record.name !== "string" || typeof record.role !== "string") return null;
   return {
+    ...(record as AuthUser),
     id: String(id),
     name: record.name,
     role: record.role,
-    email: typeof record.email === "string" ? record.email : undefined,
-    phone: typeof record.phone === "string" ? record.phone : undefined,
     vendorName: typeof record.vendorName === "string" ? record.vendorName : null,
-    vendor_code: typeof record.vendor_code === "string" ? record.vendor_code : undefined,
     allowedModules: Array.isArray(record.allowedModules)
       ? record.allowedModules.filter((item): item is string => typeof item === "string")
       : [],

@@ -56,8 +56,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         submitLogin({
           form,
           login: loginWithClient(apiRef.current),
-          saveSession: async (next, rememberMe) => {
-            await controllerRef.current.persist(next, rememberMe);
+          saveSession: async (next) => {
+            await controllerRef.current.persist(next);
             setSession(next);
           },
         }),
@@ -76,7 +76,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               user: outcome.user,
               organisations: outcome.organisations,
             };
-            await controllerRef.current.persist(next, controllerRef.current.remembers());
+            await controllerRef.current.persist(next);
             setSession(next);
             return { kind: "signedIn" };
           }

@@ -39,6 +39,24 @@ describe("interpretLoginResponse", () => {
     assert.deepEqual(outcome.organisations, [{ code: "ACME", name: "Acme" }]);
   });
 
+  it("keeps extra profile fields the web dashboard reads", () => {
+    const outcome = interpretLoginResponse(200, {
+      token: "jwt",
+      user: {
+        ...user,
+        photoUrl: "https://cdn.example/a.png",
+        vendorId: "vendor-1",
+        employeeCode: "EMP-1",
+      },
+      organisations: [],
+    });
+    assert.equal(outcome.kind, "session");
+    if (outcome.kind !== "session") return;
+    assert.equal(outcome.user.photoUrl, "https://cdn.example/a.png");
+    assert.equal(outcome.user.vendorId, "vendor-1");
+    assert.equal(outcome.user.employeeCode, "EMP-1");
+  });
+
   it("keeps the server message for a failed login", () => {
     const outcome = interpretLoginResponse(401, {
       message: "Invalid organization code",
@@ -59,7 +77,6 @@ describe("submitLogin", () => {
         password: "",
         orgCode: "",
         otp: "",
-        rememberMe: false,
         twoFactor: false,
       },
       login: async () => {
@@ -80,7 +97,6 @@ describe("submitLogin", () => {
         password: "secret",
         orgCode: "acme",
         otp: "",
-        rememberMe: true,
         twoFactor: false,
       },
       login: async (payload) => {
@@ -94,12 +110,18 @@ describe("submitLogin", () => {
           organisations: [{ code: "ACME", name: "Acme" }],
         };
       },
-      saveSession: async (session, rememberMe) => {
-        saved.push({ session, rememberMe });
+      saveSession: async (next) => {
+        saved.push(next);
       },
     });
     assert.equal(result.kind, "signedIn");
-    assert.equal(saved.length, 1);
+    assert.deepEqual(saved, [
+      {
+        token: "jwt",
+        user,
+        organisations: [{ code: "ACME", name: "Acme" }],
+      },
+    ]);
   });
 
   it("returns the OTP step without saving a session", async () => {
@@ -110,7 +132,6 @@ describe("submitLogin", () => {
         password: "secret",
         orgCode: "ACME",
         otp: "",
-        rememberMe: false,
         twoFactor: false,
       },
       login: async () => ({

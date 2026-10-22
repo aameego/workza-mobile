@@ -3,6 +3,5 @@ export type LoginFormValues = {
   password: string;
   orgCode: string;
   otp: string;
-  rememberMe: boolean;
   twoFactor: boolean;
 };

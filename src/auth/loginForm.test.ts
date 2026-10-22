@@ -8,7 +8,6 @@ const ready = {
   password: "secret",
   orgCode: "acme",
   otp: "",
-  rememberMe: false,
   twoFactor: false,
 };
 

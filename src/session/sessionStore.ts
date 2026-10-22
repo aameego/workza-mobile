@@ -30,7 +30,6 @@ const readSession = (token: string | null, userRaw: string | null, orgsRaw: stri
 
 export const createSessionController = (store: KeyValueStore) => {
   let current: SessionData | null = null;
-  let remembered = false;
 
   const deleteAll = async () => {
     await Promise.all(KEYS.map((key) => store.deleteItem(key)));
@@ -38,16 +37,9 @@ export const createSessionController = (store: KeyValueStore) => {
 
   return {
     token: () => current?.token ?? null,
-    remembers: () => remembered,
     current: () => current,
 
     async hydrate(): Promise<SessionData | null> {
-      const flag = await store.getItem(REMEMBER_KEY);
-      if (flag !== "true") {
-        current = null;
-        remembered = false;
-        return null;
-      }
       const session = readSession(
         await store.getItem(TOKEN_KEY),
         await store.getItem(USER_KEY),
@@ -56,22 +48,14 @@ export const createSessionController = (store: KeyValueStore) => {
       if (!session) {
         await deleteAll();
         current = null;
-        remembered = false;
         return null;
       }
       current = session;
-      remembered = true;
       return session;
     },
 
-    async persist(session: SessionData, rememberMe: boolean) {
+    async persist(session: SessionData) {
       current = session;
-      remembered = rememberMe;
-      if (!rememberMe) {
-        await deleteAll();
-        return;
-      }
-      await store.setItem(REMEMBER_KEY, "true");
       await store.setItem(TOKEN_KEY, session.token);
       await store.setItem(USER_KEY, JSON.stringify(session.user));
       await store.setItem(ORGS_KEY, JSON.stringify(session.organisations));
@@ -79,7 +63,6 @@ export const createSessionController = (store: KeyValueStore) => {
 
     async clear() {
       current = null;
-      remembered = false;
       await deleteAll();
     },
   };

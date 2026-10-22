@@ -26,9 +26,13 @@ export type ApiRequest = {
 };
 
 const messageFrom = (body: unknown, fallback: string) => {
-  if (!body || typeof body !== "object" || !("message" in body)) return fallback;
-  const message = (body as { message: unknown }).message;
-  return typeof message === "string" && message.trim() ? message : fallback;
+  if (!body || typeof body !== "object") return fallback;
+  const record = body as Record<string, unknown>;
+  for (const key of ["message", "error"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
 };
 
 export const createApiClient = ({

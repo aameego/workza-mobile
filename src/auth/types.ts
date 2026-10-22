@@ -1,12 +1,21 @@
 export type AuthUser = {
   id: string;
   name: string;
-  email?: string;
-  phone?: string;
   role: string;
   vendorName: string | null;
-  vendor_code?: string;
   allowedModules: string[];
+  email?: string;
+  phone?: string;
+  vendor_code?: string;
+  vendorId?: unknown;
+  employeeId?: unknown;
+  employeeCode?: string | null;
+  employeeName?: string | null;
+  photoUrl?: string;
+  photoDisplayUrl?: string;
+  logoUrl?: string;
+  isTwoFactor?: boolean;
+  isConsultancy?: boolean;
 };
 
 export type Organisation = {

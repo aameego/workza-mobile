@@ -1,149 +1,210 @@
 import { Redirect } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type Ref } from "react";
+import {
+  ActivityIndicator,
+  BackHandler,
+  Linking,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView as RNWebView } from "react-native-webview";
 
-import { organisationsForSwitcher } from "@/auth/organisations";
-import { Workza } from "@/constants/theme";
+import {
+  WEB_APP_BASE_URL,
+  decideOpenWindow,
+  decideWebViewNavigation,
+  isWebAppSignedOutUrl,
+  sessionBootstrapScript,
+  webAppEntryUrl,
+} from "@/config/webApp";
+import { requestAttendanceMediaPermissions, WEBVIEW_MEDIA_PROPS } from "@/config/webViewMedia";
+import { colors, space } from "@/theme";
+import { AppButton, AppScreen, AppText, BrandLogo } from "@/ui";
 import { useSession } from "@/session/SessionProvider";
 
+type WebViewHost = {
+  goBack: () => void;
+  reload: () => void;
+};
+
+type WebViewNav = { url: string; canGoBack: boolean };
+type WebViewRequest = { url: string; isTopFrame?: boolean };
+type WebViewOpenWindow = { nativeEvent: { targetUrl: string } };
+
+// RN 0.88 + react-native-webview props currently collapse to `never` under tsc.
+const WebView = RNWebView as unknown as ComponentType<Record<string, unknown> & { ref?: Ref<WebViewHost> }>;
+
 export default function HomeScreen() {
-  const { session, signOut, switchOrganisation } = useSession();
-  const [otpFor, setOtpFor] = useState("");
-  const [otp, setOtp] = useState("");
-  const [error, setError] = useState("");
-  const [loadingCode, setLoadingCode] = useState("");
+  const { session, signOut } = useSession();
+  const webRef = useRef<WebViewHost>(null);
+  const firstPaintDone = useRef(false);
+  const lastUrl = useRef("");
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [showFirstLoad, setShowFirstLoad] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const entryUrl = useMemo(() => (session ? webAppEntryUrl(session) : ""), [session]);
+  const bootstrap = useMemo(
+    () => (session ? sessionBootstrapScript(session) : "true;"),
+    [session]
+  );
+
+  const leaveIfSignedOut = useCallback(
+    (url: string) => {
+      if (!isWebAppSignedOutUrl(url, WEB_APP_BASE_URL)) return false;
+      void signOut();
+      return true;
+    },
+    [signOut]
+  );
+
+  const recoverWebView = useCallback(() => {
+    webRef.current?.reload();
+  }, []);
+
+  useEffect(() => {
+    void requestAttendanceMediaPermissions({
+      os: Platform.OS,
+      requestMultiple: (permissions) =>
+        PermissionsAndroid.requestMultiple(
+          permissions as Parameters<typeof PermissionsAndroid.requestMultiple>[0]
+        ),
+    });
+  }, []);
+
+  const applyNavDecision = useCallback((decision: ReturnType<typeof decideWebViewNavigation>) => {
+    if (decision.action === "openExternal") {
+      void Linking.openURL(decision.url).catch(() => {});
+      return false;
+    }
+    return decision.action === "allow";
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!canGoBack) return false;
+      webRef.current?.goBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [canGoBack]);
 
   if (!session) return <Redirect href="/login" />;
 
-  const organisations = organisationsForSwitcher(session.organisations, session.user.vendor_code);
-  const organisation = session.user.vendorName || session.user.vendor_code || "Your organisation";
-
-  const onSwitch = async (code: string, codeOtp = "") => {
-    setLoadingCode(code);
-    setError("");
-    const result = await switchOrganisation(code, codeOtp);
-    setLoadingCode("");
-    if (result.kind === "twoFactor") {
-      setOtpFor(code);
-      setOtp("");
-      setError(result.message);
-      return;
-    }
-    if (result.kind === "error") {
-      setError(result.message);
-      return;
-    }
-    setOtpFor("");
-    setOtp("");
-  };
+  if (Platform.OS === "web") {
+    return (
+      <AppScreen>
+        <BrandLogo />
+        <AppText variant="title" style={{ marginTop: space.xl }}>
+          Open Workza on your phone
+        </AppText>
+        <AppText variant="subtitle" style={{ marginTop: space.sm }}>
+          After sign-in, the dashboard and every HRMS module open in the app. Use iOS or
+          Android to continue.
+        </AppText>
+        <AppButton
+          label="Sign out"
+          variant="secondary"
+          onPress={() => signOut()}
+          style={{ marginTop: space.xl, alignSelf: "flex-start" }}
+        />
+      </AppScreen>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Text style={styles.kicker}>Signed in</Text>
-      <Text style={styles.title}>{session.user.name}</Text>
-      <Text style={styles.meta}>
-        {session.user.role} · {organisation}
-      </Text>
-
-      {organisations.length > 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Organisations</Text>
-          {organisations.map((org) => (
-            <View key={org.code}>
-              <Pressable
-                style={styles.orgRow}
-                disabled={org.current || loadingCode !== ""}
-                onPress={() => onSwitch(org.code)}
-              >
-                <Text style={styles.orgName}>{org.name}</Text>
-                <Text style={styles.orgCode}>{org.current ? "Current" : org.code}</Text>
-              </Pressable>
-              {otpFor === org.code ? (
-                <View style={styles.otpRow}>
-                  <TextInput
-                    value={otp}
-                    onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="6-digit OTP"
-                    placeholderTextColor={Workza.muted}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    style={styles.otpInput}
-                  />
-                  <Pressable
-                    style={styles.otpButton}
-                    disabled={otp.length !== 6 || loadingCode !== ""}
-                    onPress={() => onSwitch(org.code, otp)}
-                  >
-                    {loadingCode === org.code ? (
-                      <ActivityIndicator color={Workza.white} />
-                    ) : (
-                      <Text style={styles.otpButtonText}>Confirm</Text>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
-            </View>
-          ))}
+    <SafeAreaView style={styles.screen} edges={["top"]}>
+      <WebView
+        ref={webRef}
+        style={styles.webview}
+        source={{ uri: entryUrl }}
+        originWhitelist={["https://*", "http://*", "about:*", "blob:*", "data:*"]}
+        sharedCookiesEnabled
+        thirdPartyCookiesEnabled
+        javaScriptEnabled
+        domStorageEnabled
+        cacheEnabled
+        mixedContentMode="always"
+        nestedScrollEnabled
+        setSupportMultipleWindows
+        androidLayerType="hardware"
+        geolocationEnabled={WEBVIEW_MEDIA_PROPS.geolocationEnabled}
+        allowsInlineMediaPlayback={WEBVIEW_MEDIA_PROPS.allowsInlineMediaPlayback}
+        mediaPlaybackRequiresUserAction={WEBVIEW_MEDIA_PROPS.mediaPlaybackRequiresUserAction}
+        mediaCapturePermissionGrantType={WEBVIEW_MEDIA_PROPS.mediaCapturePermissionGrantType}
+        allowsBackForwardNavigationGestures
+        injectedJavaScriptBeforeContentLoaded={bootstrap}
+        injectedJavaScript={bootstrap}
+        onLoadStart={() => {
+          setLoadError("");
+          if (!firstPaintDone.current) setShowFirstLoad(true);
+        }}
+        onLoadEnd={() => {
+          firstPaintDone.current = true;
+          setShowFirstLoad(false);
+          if (lastUrl.current) leaveIfSignedOut(lastUrl.current);
+        }}
+        onError={() => {
+          firstPaintDone.current = true;
+          setShowFirstLoad(false);
+          setLoadError("Could not open Workza. Check your connection and try again.");
+        }}
+        onHttpError={(event: { nativeEvent: { statusCode: number } }) => {
+          if (event.nativeEvent.statusCode >= 500) {
+            setLoadError("Workza is unavailable right now. Try again.");
+          }
+        }}
+        onContentProcessDidTerminate={recoverWebView}
+        onRenderProcessGone={recoverWebView}
+        onNavigationStateChange={(nav: WebViewNav) => {
+          setCanGoBack(nav.canGoBack);
+          lastUrl.current = nav.url;
+          if (firstPaintDone.current) leaveIfSignedOut(nav.url);
+        }}
+        onShouldStartLoadWithRequest={(request: WebViewRequest) =>
+          applyNavDecision(decideWebViewNavigation(request, WEB_APP_BASE_URL))
+        }
+        onOpenWindow={(event: WebViewOpenWindow) => {
+          applyNavDecision(decideOpenWindow(event.nativeEvent.targetUrl, WEB_APP_BASE_URL));
+        }}
+      />
+      {showFirstLoad && !loadError ? (
+        <View style={styles.overlay} pointerEvents="none">
+          <ActivityIndicator color={colors.navy} size="large" />
         </View>
       ) : null}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable style={styles.signOut} onPress={() => signOut()} accessibilityRole="button">
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
+      {loadError ? (
+        <View style={styles.overlay}>
+          <AppText variant="error">{loadError}</AppText>
+          <AppButton
+            label="Try again"
+            onPress={() => {
+              setLoadError("");
+              firstPaintDone.current = false;
+              setShowFirstLoad(true);
+              webRef.current?.reload();
+            }}
+            style={{ marginTop: space.md }}
+          />
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Workza.background, padding: 24 },
-  kicker: { color: Workza.teal, fontSize: 14, fontWeight: "700" },
-  title: { marginTop: 8, color: Workza.navy, fontSize: 32, fontWeight: "700" },
-  meta: { marginTop: 8, color: Workza.muted, fontSize: 16 },
-  card: {
-    marginTop: 28,
-    backgroundColor: Workza.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Workza.border,
-    padding: 8,
-  },
-  cardTitle: { paddingHorizontal: 12, paddingTop: 8, color: Workza.navy, fontWeight: "700" },
-  orgRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-  },
-  orgName: { color: Workza.text, fontSize: 16 },
-  orgCode: { color: Workza.muted },
-  otpRow: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
-  otpInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: Workza.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    color: Workza.text,
-  },
-  otpButton: {
-    backgroundColor: Workza.navy,
-    borderRadius: 10,
-    paddingHorizontal: 14,
+  screen: { flex: 1, backgroundColor: colors.background },
+  // opacity < 1 avoids an Android compositor bug that paints the WebView white after SPA navigations.
+  webview: { flex: 1, backgroundColor: colors.background, opacity: 0.99 },
+  overlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.background,
+    padding: space.xl,
   },
-  otpButtonText: { color: Workza.white, fontWeight: "700" },
-  error: { marginTop: 16, color: Workza.error },
-  signOut: {
-    marginTop: 28,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: Workza.navy,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  signOutText: { color: Workza.navy, fontWeight: "700" },
 });

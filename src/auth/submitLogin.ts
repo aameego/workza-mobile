@@ -20,7 +20,7 @@ export const submitLogin = async ({
 }: {
   form: LoginFormValues;
   login: (payload: LoginPayload) => Promise<LoginOutcome>;
-  saveSession: (session: SessionData, rememberMe: boolean) => Promise<void>;
+  saveSession: (session: SessionData) => Promise<void>;
 }): Promise<SubmitLoginResult> => {
   if (!validateLoginForm(form).valid) {
     return { kind: "error", message: firstError(form) };
@@ -34,14 +34,11 @@ export const submitLogin = async ({
   });
 
   if (outcome.kind === "session") {
-    await saveSession(
-      {
-        token: outcome.token,
-        user: outcome.user,
-        organisations: outcome.organisations,
-      },
-      form.rememberMe
-    );
+    await saveSession({
+      token: outcome.token,
+      user: outcome.user,
+      organisations: outcome.organisations,
+    });
     return { kind: "signedIn" };
   }
 

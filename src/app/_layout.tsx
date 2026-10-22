@@ -1,22 +1,26 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, type ReactNode } from "react";
 
-import { useSession, SessionProvider } from "@/session/SessionProvider";
+import { SessionProvider, useSession } from "@/session/SessionProvider";
+import { colors, useWorkzaFonts } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient();
 
 function SplashGate({ children }: { children: ReactNode }) {
+  const fontsReady = useWorkzaFonts();
   const { ready } = useSession();
+  const go = fontsReady && ready;
 
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
-  }, [ready]);
+    if (go) SplashScreen.hideAsync().catch(() => {});
+  }, [go]);
 
-  if (!ready) return null;
+  if (!go) return null;
   return children;
 }
 
@@ -25,7 +29,8 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <SplashGate>
-          <Stack screenOptions={{ headerShown: false }} />
+          <StatusBar style="dark" />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
         </SplashGate>
       </SessionProvider>
     </QueryClientProvider>

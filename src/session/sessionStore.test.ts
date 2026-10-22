@@ -32,10 +32,10 @@ function memoryStore(): KeyValueStore & { data: Map<string, string> } {
 }
 
 describe("session controller", () => {
-  it("keeps a remembered session across a cold start", async () => {
+  it("keeps a session across a cold start", async () => {
     const store = memoryStore();
     const first = createSessionController(store);
-    await first.persist(session, true);
+    await first.persist(session);
 
     const second = createSessionController(store);
     assert.equal(second.token(), null);
@@ -44,21 +44,20 @@ describe("session controller", () => {
     assert.equal(second.token(), "jwt");
   });
 
-  it("drops an unremembered session when the app is opened again", async () => {
+  it("restores a stored session even when Remember me was never ticked", async () => {
     const store = memoryStore();
-    const first = createSessionController(store);
-    await first.persist(session, false);
-    assert.equal(first.token(), "jwt");
-    assert.equal(store.data.size, 0);
+    await store.setItem("token", session.token);
+    await store.setItem("user", JSON.stringify(session.user));
+    await store.setItem("organisations", JSON.stringify(session.organisations));
 
-    const second = createSessionController(store);
-    assert.equal(await second.hydrate(), null);
+    const restored = await createSessionController(store).hydrate();
+    assert.deepEqual(restored, session);
   });
 
   it("clears memory and the secure store on logout", async () => {
     const store = memoryStore();
     const controller = createSessionController(store);
-    await controller.persist(session, true);
+    await controller.persist(session);
     await controller.clear();
     assert.equal(controller.token(), null);
     assert.equal(store.data.size, 0);

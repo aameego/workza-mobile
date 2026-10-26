@@ -14,7 +14,9 @@
           "NSAllowsLocalNetworking": true
         },
         "NSCameraUsageDescription": "Workza uses the camera so you can take an attendance selfie.",
-        "NSLocationWhenInUseUsageDescription": "Workza uses your location to confirm you are at the work site when you check in."
+        "NSLocationWhenInUseUsageDescription": "Workza uses your location to confirm you are at the work site when you check in.",
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
       }
     },
     "android": {
@@ -24,7 +26,9 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
@@ -39,6 +43,13 @@
     },
     "plugins": [
       "./plugins/withAndroidAppSize",
+      [
+        "expo-file-system",
+        {
+          "enableFileSharing": true,
+          "supportsOpeningDocumentsInPlace": true
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",

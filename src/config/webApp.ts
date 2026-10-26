@@ -103,7 +103,10 @@ export const isWebAppSignedOutUrl = (url: string, webBase: string) => {
   }
 };
 
-const INTERNAL_WEBVIEW_URL = /^(about:|blob:|data:|file:|intent:)/i;
+const INTERNAL_WEBVIEW_URL = /^(about:|blob:|data:|file:)/i;
+const COORD_PAIR = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/;
+const MAPS_INTENT_HINT =
+  /google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl|package=com\.google\.android\.apps\.maps/i;
 
 export type WebViewNavRequest = {
   url: string;
@@ -137,9 +140,14 @@ export const isMapsAssetUrl = (url: string) => {
 
 /** Pin links (`target=_blank` to google.com/maps) must leave the WebView. */
 export const isExternalMapsUrl = (url: string) => {
-  if (url.startsWith("geo:")) return true;
+  if (!url) return false;
+  if (url.startsWith("geo:") || url.startsWith("maps:") || url.startsWith("comgooglemaps:")) {
+    return true;
+  }
+  if (url.startsWith("google.navigation:")) return true;
+  if (/^intent:/i.test(url) && MAPS_INTENT_HINT.test(url)) return true;
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(reconstructHttpsFromIntent(url) || url);
     const host = parsed.hostname.toLowerCase();
     const path = parsed.pathname.toLowerCase();
     if (host === "maps.google.com" || host === "maps.app.goo.gl") return true;
@@ -151,6 +159,57 @@ export const isExternalMapsUrl = (url: string) => {
     return false;
   }
 };
+
+/** Rebuild https:// from Android `intent://host/path#Intent;scheme=https;...` */
+export const reconstructHttpsFromIntent = (url: string) => {
+  if (!/^intent:/i.test(url)) return null;
+  const hash = url.indexOf("#");
+  const body = hash >= 0 ? url.slice(0, hash) : url;
+  const fragment = hash >= 0 ? url.slice(hash + 1) : "";
+  const scheme = /(?:^|;)scheme=([^;]+)/i.exec(fragment)?.[1] || "https";
+  const rest = body.replace(/^intent:/i, "");
+  if (!rest.startsWith("//")) return null;
+  return `${scheme}:${rest}`;
+};
+
+export const parseMapsCoordinates = (url: string) => {
+  const normalized = reconstructHttpsFromIntent(url) || url;
+  const geo = /^geo:([^?;]+)/i.exec(normalized);
+  if (geo) {
+    const pair = COORD_PAIR.exec(decodeURIComponent(geo[1]));
+    if (pair) return { lat: pair[1], lng: pair[2] };
+  }
+  try {
+    const parsed = new URL(normalized);
+    for (const key of ["q", "query", "ll", "daddr", "destination"]) {
+      const value = parsed.searchParams.get(key);
+      if (!value) continue;
+      const pair = COORD_PAIR.exec(value);
+      if (pair) return { lat: pair[1], lng: pair[2] };
+    }
+    const at = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(`${parsed.pathname}${parsed.hash}`);
+    if (at) return { lat: at[1], lng: at[2] };
+  } catch {
+    // Fall through to a raw scan of the original string.
+  }
+  const pair = COORD_PAIR.exec(normalized);
+  return pair ? { lat: pair[1], lng: pair[2] } : null;
+};
+
+/**
+ * https maps links open Chrome, which then shows "Open App" and does nothing.
+ * geo: / maps: launch the installed Maps app at the pin.
+ */
+export const toNativeMapsUrl = (url: string, platform: string) => {
+  const coords = parseMapsCoordinates(url);
+  if (!coords) return reconstructHttpsFromIntent(url) || url;
+  const q = `${coords.lat},${coords.lng}`;
+  if (platform === "ios") return `maps:?q=${q}`;
+  return `geo:${q}?q=${q}`;
+};
+
+export const urlForExternalOpen = (url: string, platform: string) =>
+  isExternalMapsUrl(url) ? toNativeMapsUrl(url, platform) : reconstructHttpsFromIntent(url) || url;
 
 export const shouldOpenMapsExternally = (request: WebViewNavRequest) =>
   isExternalMapsUrl(request.url) && request.isTopFrame !== false;

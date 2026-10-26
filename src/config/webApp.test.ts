@@ -7,9 +7,13 @@ import {
   isExternalMapsUrl,
   isMapsAssetUrl,
   isWebAppSignedOutUrl,
+  parseMapsCoordinates,
+  reconstructHttpsFromIntent,
   resolveWebAppBaseUrl,
   sessionBootstrapScript,
   shouldAllowWebViewRequest,
+  toNativeMapsUrl,
+  urlForExternalOpen,
   webAppEntryUrl,
 } from "./webApp.ts";
 
@@ -153,6 +157,26 @@ describe("shouldAllowWebViewRequest", () => {
       shouldAllowWebViewRequest({ url: pin, isTopFrame: false }, base),
       true
     );
+    assert.equal(toNativeMapsUrl(pin, "android"), "geo:28.46,77.02?q=28.46,77.02");
+    assert.equal(toNativeMapsUrl(pin, "ios"), "maps:?q=28.46,77.02");
+    assert.equal(urlForExternalOpen(pin, "android"), "geo:28.46,77.02?q=28.46,77.02");
+  });
+
+  it("turns Google Maps Open App intents into a geo link the Maps app can open", () => {
+    const intent =
+      "intent://www.google.com/maps?q=28.6139,77.209#Intent;scheme=https;package=com.google.android.apps.maps;end";
+    assert.equal(isExternalMapsUrl(intent), true);
+    assert.equal(shouldAllowWebViewRequest({ url: intent }, base), false);
+    assert.deepEqual(decideWebViewNavigation({ url: intent }, base), {
+      action: "openExternal",
+      url: intent,
+    });
+    assert.equal(
+      reconstructHttpsFromIntent(intent),
+      "https://www.google.com/maps?q=28.6139,77.209"
+    );
+    assert.deepEqual(parseMapsCoordinates(intent), { lat: "28.6139", lng: "77.209" });
+    assert.equal(urlForExternalOpen(intent, "android"), "geo:28.6139,77.209?q=28.6139,77.209");
   });
 
   it("blocks only an explicit top-frame jump off the Workza site", () => {

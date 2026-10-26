@@ -1,0 +1,10 @@
+{
+  "name": "workza-downloads",
+  "version": "1.0.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

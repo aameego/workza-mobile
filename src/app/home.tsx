@@ -2,6 +2,7 @@ import { Redirect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type Ref } from "react";
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Linking,
   PermissionsAndroid,
@@ -11,6 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView as RNWebView } from "react-native-webview";
+import * as FileSystem from "expo-file-system/legacy";
+import { saveToPublicDownloads } from "workza-downloads";
 
 import {
   WEB_APP_BASE_URL,
@@ -18,9 +21,21 @@ import {
   decideWebViewNavigation,
   isWebAppSignedOutUrl,
   sessionBootstrapScript,
+  urlForExternalOpen,
   webAppEntryUrl,
 } from "@/config/webApp";
-import { requestAttendanceMediaPermissions, WEBVIEW_MEDIA_PROPS } from "@/config/webViewMedia";
+import {
+  DOWNLOAD_BRIDGE_SCRIPT,
+  parseWebViewDownloadMessage,
+  saveWebViewDownload,
+} from "@/config/webViewDownload";
+import {
+  ATTENDANCE_MEDIA_BRIDGE_SCRIPT,
+  ATTENDANCE_MEDIA_READY_SCRIPT,
+  parseAttendanceMediaMessage,
+  requestAttendanceMediaPermissions,
+  WEBVIEW_MEDIA_PROPS,
+} from "@/config/webViewMedia";
 import { colors, space } from "@/theme";
 import { AppButton, AppScreen, AppText, BrandLogo } from "@/ui";
 import { useSession } from "@/session/SessionProvider";
@@ -28,6 +43,7 @@ import { useSession } from "@/session/SessionProvider";
 type WebViewHost = {
   goBack: () => void;
   reload: () => void;
+  injectJavaScript: (script: string) => void;
 };
 
 type WebViewNav = { url: string; canGoBack: boolean };
@@ -48,7 +64,10 @@ export default function HomeScreen() {
 
   const entryUrl = useMemo(() => (session ? webAppEntryUrl(session) : ""), [session]);
   const bootstrap = useMemo(
-    () => (session ? sessionBootstrapScript(session) : "true;"),
+    () =>
+      session
+        ? `${sessionBootstrapScript(session)}\n${ATTENDANCE_MEDIA_BRIDGE_SCRIPT}\n${DOWNLOAD_BRIDGE_SCRIPT}`
+        : `${ATTENDANCE_MEDIA_BRIDGE_SCRIPT}\n${DOWNLOAD_BRIDGE_SCRIPT}`,
     [session]
   );
 
@@ -65,22 +84,68 @@ export default function HomeScreen() {
     webRef.current?.reload();
   }, []);
 
-  useEffect(() => {
-    void requestAttendanceMediaPermissions({
+  const askAttendanceMedia = useCallback(async () => {
+    await requestAttendanceMediaPermissions({
       os: Platform.OS,
+      check: (permission) =>
+        PermissionsAndroid.check(
+          permission as Parameters<typeof PermissionsAndroid.check>[0]
+        ),
       requestMultiple: (permissions) =>
         PermissionsAndroid.requestMultiple(
           permissions as Parameters<typeof PermissionsAndroid.requestMultiple>[0]
         ),
     });
+    webRef.current?.injectJavaScript(ATTENDANCE_MEDIA_READY_SCRIPT);
   }, []);
 
   const applyNavDecision = useCallback((decision: ReturnType<typeof decideWebViewNavigation>) => {
     if (decision.action === "openExternal") {
-      void Linking.openURL(decision.url).catch(() => {});
+      const url = urlForExternalOpen(decision.url, Platform.OS);
+      void Linking.openURL(url).catch(() => {
+        if (url !== decision.url) {
+          void Linking.openURL(decision.url).catch(() => {});
+        }
+      });
       return false;
     }
     return decision.action === "allow";
+  }, []);
+
+  const saveWebFile = useCallback(async (raw: string) => {
+    const file = parseWebViewDownloadMessage(raw);
+    if (!file) return;
+    try {
+      if (Platform.OS === "android") {
+        const sdk = Number(Platform.Version);
+        const request = (permission: string) =>
+          PermissionsAndroid.request(
+            permission as Parameters<typeof PermissionsAndroid.request>[0]
+          );
+        if (sdk >= 33) {
+          await request("android.permission.POST_NOTIFICATIONS");
+        } else if (sdk < 29) {
+          await request("android.permission.WRITE_EXTERNAL_STORAGE");
+        }
+      }
+      const directory =
+        (Platform.OS === "android" ? FileSystem.cacheDirectory : FileSystem.documentDirectory) ||
+        FileSystem.documentDirectory ||
+        FileSystem.cacheDirectory ||
+        "";
+      const result = await saveWebViewDownload(file, {
+        os: Platform.OS,
+        directory,
+        writeFile: (uri, base64) =>
+          FileSystem.writeAsStringAsync(uri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          }),
+        publishToDownloads: Platform.OS === "android" ? saveToPublicDownloads : undefined,
+      });
+      Alert.alert("Download complete", `${result.fileName} was saved to your device.`);
+    } catch {
+      Alert.alert("Download failed", "Could not save the file. Please try again.");
+    }
   }, []);
 
   useEffect(() => {
@@ -122,7 +187,7 @@ export default function HomeScreen() {
         ref={webRef}
         style={styles.webview}
         source={{ uri: entryUrl }}
-        originWhitelist={["https://*", "http://*", "about:*", "blob:*", "data:*"]}
+        originWhitelist={["https://*", "http://*", "about:*", "blob:*", "data:*", "geo:*", "intent:*", "maps:*"]}
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
         javaScriptEnabled
@@ -170,6 +235,14 @@ export default function HomeScreen() {
         }
         onOpenWindow={(event: WebViewOpenWindow) => {
           applyNavDecision(decideOpenWindow(event.nativeEvent.targetUrl, WEB_APP_BASE_URL));
+        }}
+        onMessage={(event: { nativeEvent: { data: string } }) => {
+          const raw = event.nativeEvent.data;
+          if (parseAttendanceMediaMessage(raw)) {
+            void askAttendanceMedia();
+            return;
+          }
+          void saveWebFile(raw);
         }}
       />
       {showFirstLoad && !loadError ? (

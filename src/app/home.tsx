@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView as RNWebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Notifications from "expo-notifications";
 import { saveToPublicDownloads } from "workza-downloads";
 
 import {
@@ -22,6 +23,7 @@ import {
   isWebAppSignedOutUrl,
   sessionBootstrapScript,
   urlForExternalOpen,
+  vendorWebUrl,
   webAppEntryUrl,
 } from "@/config/webApp";
 import {
@@ -30,12 +32,14 @@ import {
   saveWebViewDownload,
 } from "@/config/webViewDownload";
 import {
+  ATTENDANCE_CAMERA_BLOCKED_ALERT,
   ATTENDANCE_MEDIA_BRIDGE_SCRIPT,
-  ATTENDANCE_MEDIA_READY_SCRIPT,
+  attendanceMediaNativeFollowUp,
   parseAttendanceMediaMessage,
   requestAttendanceMediaPermissions,
   WEBVIEW_MEDIA_PROPS,
 } from "@/config/webViewMedia";
+import { WEBVIEW_SHELL_PROPS } from "@/config/webViewShell";
 import { colors, space } from "@/theme";
 import { AppButton, AppScreen, AppText, BrandLogo } from "@/ui";
 import { useSession } from "@/session/SessionProvider";
@@ -50,6 +54,9 @@ type WebViewNav = { url: string; canGoBack: boolean };
 type WebViewRequest = { url: string; isTopFrame?: boolean };
 type WebViewOpenWindow = { nativeEvent: { targetUrl: string } };
 
+const NOTIFICATIONS_UPDATED_SCRIPT = "window.dispatchEvent(new Event('notifications-updated')); true;";
+const navigateScript = (url: string) => `window.location.assign(${JSON.stringify(url)}); true;`;
+
 // RN 0.88 + react-native-webview props currently collapse to `never` under tsc.
 const WebView = RNWebView as unknown as ComponentType<Record<string, unknown> & { ref?: Ref<WebViewHost> }>;
 
@@ -58,6 +65,7 @@ export default function HomeScreen() {
   const webRef = useRef<WebViewHost>(null);
   const firstPaintDone = useRef(false);
   const lastUrl = useRef("");
+  const pendingUrl = useRef<string | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [showFirstLoad, setShowFirstLoad] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -85,18 +93,30 @@ export default function HomeScreen() {
   }, []);
 
   const askAttendanceMedia = useCallback(async () => {
-    await requestAttendanceMediaPermissions({
+    const result = await requestAttendanceMediaPermissions({
       os: Platform.OS,
-      check: (permission) =>
-        PermissionsAndroid.check(
-          permission as Parameters<typeof PermissionsAndroid.check>[0]
-        ),
       requestMultiple: (permissions) =>
         PermissionsAndroid.requestMultiple(
           permissions as Parameters<typeof PermissionsAndroid.requestMultiple>[0]
         ),
     });
-    webRef.current?.injectJavaScript(ATTENDANCE_MEDIA_READY_SCRIPT);
+    const follow = attendanceMediaNativeFollowUp(result);
+    if (follow.openSettings) {
+      Alert.alert(
+        ATTENDANCE_CAMERA_BLOCKED_ALERT.title,
+        ATTENDANCE_CAMERA_BLOCKED_ALERT.message,
+        [
+          { text: ATTENDANCE_CAMERA_BLOCKED_ALERT.cancel, style: "cancel" },
+          {
+            text: ATTENDANCE_CAMERA_BLOCKED_ALERT.confirm,
+            onPress: () => {
+              void Linking.openSettings();
+            },
+          },
+        ]
+      );
+    }
+    webRef.current?.injectJavaScript(follow.script);
   }, []);
 
   const applyNavDecision = useCallback((decision: ReturnType<typeof decideWebViewNavigation>) => {
@@ -148,6 +168,31 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const openFromNotification = useCallback(
+    (response: Notifications.NotificationResponse | null) => {
+      Notifications.clearLastNotificationResponse();
+      const url = session && response && vendorWebUrl(session, response.notification.request.content.data?.path);
+      if (!url) return;
+      // Before the first load finishes an injected script would be lost; onLoadEnd applies it.
+      if (firstPaintDone.current) webRef.current?.injectJavaScript(navigateScript(url));
+      else pendingUrl.current = url;
+    },
+    [session]
+  );
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    openFromNotification(Notifications.getLastNotificationResponse());
+    const tap = Notifications.addNotificationResponseReceivedListener(openFromNotification);
+    const received = Notifications.addNotificationReceivedListener(() => {
+      webRef.current?.injectJavaScript(NOTIFICATIONS_UPDATED_SCRIPT);
+    });
+    return () => {
+      tap.remove();
+      received.remove();
+    };
+  }, [openFromNotification]);
+
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -194,7 +239,7 @@ export default function HomeScreen() {
         domStorageEnabled
         cacheEnabled
         mixedContentMode="always"
-        nestedScrollEnabled
+        nestedScrollEnabled={WEBVIEW_SHELL_PROPS.nestedScrollEnabled}
         setSupportMultipleWindows
         androidLayerType="hardware"
         geolocationEnabled={WEBVIEW_MEDIA_PROPS.geolocationEnabled}
@@ -212,6 +257,10 @@ export default function HomeScreen() {
           firstPaintDone.current = true;
           setShowFirstLoad(false);
           if (lastUrl.current) leaveIfSignedOut(lastUrl.current);
+          if (pendingUrl.current) {
+            webRef.current?.injectJavaScript(navigateScript(pendingUrl.current));
+            pendingUrl.current = null;
+          }
         }}
         onError={() => {
           firstPaintDone.current = true;

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "639902202501",
+    "project_id": "workza-908cb",
+    "storage_bucket": "workza-908cb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:639902202501:android:c1b231803fadc542fbc7ec",
+        "android_client_info": {
+          "package_name": "com.aameego.workza"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1GALPc25kZsdSaMFQsGDAzfOcX-EbCNw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

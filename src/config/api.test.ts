@@ -40,11 +40,11 @@ describe("resolveApiBaseUrl", () => {
     );
   });
 
-  it("falls back to production when the environment is missing or unknown", () => {
-    assert.equal(resolveApiBaseUrl({}), "https://backend-gig.aameego.com/api");
+  it("falls back to development when the environment is missing or unknown so QA never silently hits production", () => {
+    assert.equal(resolveApiBaseUrl({}), "https://dev-gig.aameego.com/api");
     assert.equal(
       resolveApiBaseUrl({ envName: "staging" }),
-      "https://backend-gig.aameego.com/api"
+      "https://dev-gig.aameego.com/api"
     );
   });
 });

@@ -1,0 +1,9 @@
+expo.modules.workzadownloads.workza-downloads-pngs-0 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/generated/res/pngs/debug
+expo.modules.workzadownloads.workza-downloads-updated_navigation_xml-1 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/generated/updated_navigation_xml/debug
+expo.modules.workzadownloads.workza-downloads-mergeDebugResources-2 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+expo.modules.workzadownloads.workza-downloads-mergeDebugResources-3 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+expo.modules.workzadownloads.workza-downloads-debug-4 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/intermediates/merged_res/debug/mergeDebugResources
+expo.modules.workzadownloads.workza-downloads-debug-5 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/build/intermediates/packaged_res/debug/packageDebugResources
+expo.modules.workzadownloads.workza-downloads-debug-6 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/src/debug/res
+expo.modules.workzadownloads.workza-downloads-main-7 /Users/karpragatidev/Documents/hrms/AameegoGig-Mobile/modules/workza-downloads/android/src/main/res
+gradleHome-0 /Users/karpragatidev/.gradle

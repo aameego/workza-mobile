@@ -7,6 +7,7 @@ import type { LoginFormValues } from "../auth/loginFormValues";
 import { submitLogin } from "../auth/submitLogin";
 import type { SessionData, SubmitLoginResult } from "../auth/types";
 import { API_BASE_URL } from "../config/api";
+import { registerPush, unregisterPush } from "../notifications/push";
 import { deviceKeyValueStore } from "./secureStore";
 import { createSessionController, type SessionController } from "./sessionStore";
 
@@ -48,6 +49,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // A new token means sign-in, restore or an organisation switch; the device token moves with it.
+  const token = session?.token;
+  useEffect(() => {
+    if (token) void registerPush(apiRef.current);
+  }, [token]);
+
   const value = useMemo<SessionContextValue>(
     () => ({
       ready,
@@ -87,6 +94,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       },
       signOut: async () => {
+        await unregisterPush(apiRef.current);
         await controllerRef.current.clear();
         setSession(null);
       },

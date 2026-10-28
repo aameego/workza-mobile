@@ -1,8 +1,8 @@
 /**
  * Attendance check-in uses getUserMedia (selfie) and geolocation (site fence).
  * The WebView can only prompt after these native permissions exist.
- * Android "Allow this time" is revoked when the process dies — request again
- * on each cold start so the system dialog can return.
+ * Android "Allow this time" is revoked when the process dies — always call
+ * requestPermissions (do not trust check()) so the system dialog can return.
  */
 export const ATTENDANCE_ANDROID_PERMISSIONS = [
   "android.permission.CAMERA",
@@ -14,47 +14,71 @@ export type AttendancePermissionResult = {
   prompted: boolean;
   camera: boolean;
   location: boolean;
+  cameraBlocked: boolean;
+};
+
+export type AttendanceMediaFollowUp = {
+  script: string;
+  openSettings: boolean;
 };
 
 export const ATTENDANCE_MEDIA_REQUEST_TYPE = "REQUEST_ATTENDANCE_MEDIA";
 
+export const ATTENDANCE_MEDIA_READY_SCRIPT =
+  "window.dispatchEvent(new Event('workza-media-ready')); true;";
+
+export const ATTENDANCE_MEDIA_DENIED_SCRIPT =
+  "window.dispatchEvent(new Event('workza-media-denied')); true;";
+
 export const requestAttendanceMediaPermissions = async ({
   os,
-  check,
   requestMultiple,
 }: {
   os: string;
-  check?: (permission: string) => Promise<boolean>;
   requestMultiple?: (
     permissions: readonly string[]
   ) => Promise<Record<string, string>>;
 }): Promise<AttendancePermissionResult> => {
-  if (os !== "android") return { prompted: false, camera: true, location: true };
-  if (!requestMultiple) return { prompted: false, camera: false, location: false };
-
-  let needed = [...ATTENDANCE_ANDROID_PERMISSIONS];
-  if (check) {
-    const statuses = await Promise.all(
-      needed.map(async (permission) => [permission, await check(permission)] as const)
-    );
-    needed = statuses.filter(([, ok]) => !ok).map(([permission]) => permission);
-    if (needed.length === 0) {
-      return { prompted: false, camera: true, location: true };
-    }
+  if (os !== "android") {
+    return { prompted: false, camera: true, location: true, cameraBlocked: false };
+  }
+  if (!requestMultiple) {
+    return { prompted: false, camera: false, location: false, cameraBlocked: false };
   }
 
+  const needed = [...ATTENDANCE_ANDROID_PERMISSIONS];
   const result = await requestMultiple(needed);
-  const asked = new Set(needed);
-  const granted = (permission: string) =>
-    !asked.has(permission) || result[permission] === "granted";
+  const granted = (permission: string) => result[permission] === "granted";
   return {
     prompted: true,
     camera: granted("android.permission.CAMERA"),
     location:
       granted("android.permission.ACCESS_FINE_LOCATION") ||
       granted("android.permission.ACCESS_COARSE_LOCATION"),
+    cameraBlocked: result["android.permission.CAMERA"] === "never_ask_again",
   };
 };
+
+/** After Deny, do not pretend the camera is ready. Blocked = Android will not ask again. */
+export const attendanceMediaNativeFollowUp = (
+  result: AttendancePermissionResult
+): AttendanceMediaFollowUp => {
+  if (result.camera) {
+    return { script: ATTENDANCE_MEDIA_READY_SCRIPT, openSettings: false };
+  }
+  return {
+    script: ATTENDANCE_MEDIA_DENIED_SCRIPT,
+    openSettings: result.cameraBlocked,
+  };
+};
+
+export const ATTENDANCE_CAMERA_BLOCKED_ALERT = {
+  title: "Camera is blocked",
+  message:
+    "Enable Camera for Workza in Settings, then tap Allow camera on check-in.",
+  cancel: "Not now",
+  confirm: "Open Settings",
+} as const;
 
 /**
  * Check-in calls getUserMedia then geolocation. Wrap both so Android can
@@ -66,22 +90,30 @@ export const ATTENDANCE_MEDIA_BRIDGE_SCRIPT = `
   window.__workzaMediaBridge = true;
   var waiters = [];
   window.addEventListener('workza-media-ready', function () {
-    waiters.splice(0).forEach(function (fn) { fn(); });
+    waiters.splice(0).forEach(function (fn) { fn(true); });
+  });
+  window.addEventListener('workza-media-denied', function () {
+    waiters.splice(0).forEach(function (fn) { fn(false); });
   });
   function waitForNative() {
-    return new Promise(function (resolve) {
+    return new Promise(function (resolve, reject) {
       var done = false;
-      var finish = function () {
+      var finish = function (ok) {
         if (done) return;
         done = true;
-        resolve();
+        if (ok) resolve();
+        else {
+          var err = new Error('Camera permission was not granted.');
+          err.name = 'NotAllowedError';
+          reject(err);
+        }
       };
       waiters.push(finish);
-      setTimeout(finish, 15000);
+      setTimeout(function () { finish(false); }, 30000);
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: '${ATTENDANCE_MEDIA_REQUEST_TYPE}' }));
       } catch (e) {
-        finish();
+        finish(false);
       }
     });
   }
@@ -91,11 +123,29 @@ export const ATTENDANCE_MEDIA_BRIDGE_SCRIPT = `
       return waitForNative().then(function () { return origGum(constraints); });
     };
   }
-  if (navigator.geolocation && navigator.geolocation.getCurrentPosition) {
-    var origGeo = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
-    navigator.geolocation.getCurrentPosition = function (success, error, options) {
-      waitForNative().then(function () { origGeo(success, error, options); });
+  function wrapLegacyGum(orig) {
+    return function (constraints, success, error) {
+      waitForNative().then(function () { orig(constraints, success, error); }, error);
     };
+  }
+  if (navigator.getUserMedia) {
+    navigator.getUserMedia = wrapLegacyGum(navigator.getUserMedia.bind(navigator));
+  }
+  if (navigator.webkitGetUserMedia) {
+    navigator.webkitGetUserMedia = wrapLegacyGum(navigator.webkitGetUserMedia.bind(navigator));
+  }
+  function wrapGeo(orig) {
+    return function (success, error, options) {
+      waitForNative().then(function () { orig(success, error, options); }, function (err) {
+        if (typeof error === 'function') error({ code: 1, message: err && err.message ? err.message : 'denied', PERMISSION_DENIED: 1 });
+      });
+    };
+  }
+  if (navigator.geolocation && navigator.geolocation.getCurrentPosition) {
+    navigator.geolocation.getCurrentPosition = wrapGeo(navigator.geolocation.getCurrentPosition.bind(navigator.geolocation));
+  }
+  if (navigator.geolocation && navigator.geolocation.watchPosition) {
+    navigator.geolocation.watchPosition = wrapGeo(navigator.geolocation.watchPosition.bind(navigator.geolocation));
   }
 })();
 true;
@@ -110,9 +160,6 @@ export const parseAttendanceMediaMessage = (raw: string) => {
   }
 };
 
-export const ATTENDANCE_MEDIA_READY_SCRIPT =
-  "window.dispatchEvent(new Event('workza-media-ready')); true;";
-
 export const ATTENDANCE_IOS_USAGE = {
   NSCameraUsageDescription:
     "Workza uses the camera so you can take an attendance selfie.",
@@ -124,5 +171,5 @@ export const WEBVIEW_MEDIA_PROPS = {
   geolocationEnabled: true,
   allowsInlineMediaPlayback: true,
   mediaPlaybackRequiresUserAction: false,
-  mediaCapturePermissionGrantType: "grantIfSameHostElsePrompt" as const,
+  mediaCapturePermissionGrantType: "prompt" as const,
 };

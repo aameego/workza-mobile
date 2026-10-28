@@ -1,3 +1,5 @@
+import { resolveAppEnvName } from "./appEnv";
+
 export const PRODUCTION_API_URL = "https://backend-gig.aameego.com/api";
 export const DEVELOPMENT_API_URL = "https://dev-gig.aameego.com/api";
 export const LOCAL_API_URL = "http://localhost:5001/api";
@@ -17,7 +19,7 @@ const ensureApiSuffix = (url: string) => {
   return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
 };
 
-/** Same resolution order as the web app: explicit URL, then named environment, then production. */
+/** Explicit URL, then named environment. Missing names are development, not production. */
 export const resolveApiBaseUrl = ({
   explicitUrl,
   envName,
@@ -26,10 +28,7 @@ export const resolveApiBaseUrl = ({
   envName?: string;
 } = {}) => {
   if (explicitUrl?.trim()) return ensureApiSuffix(explicitUrl);
-  if (envName && envName in API_ENVIRONMENTS) {
-    return API_ENVIRONMENTS[envName as ApiEnvName];
-  }
-  return PRODUCTION_API_URL;
+  return API_ENVIRONMENTS[resolveAppEnvName(envName)];
 };
 
 export const API_BASE_URL = resolveApiBaseUrl({

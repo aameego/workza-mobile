@@ -14,6 +14,7 @@ import {
   shouldAllowWebViewRequest,
   toNativeMapsUrl,
   urlForExternalOpen,
+  vendorWebUrl,
   webAppEntryUrl,
 } from "./webApp.ts";
 
@@ -46,6 +47,13 @@ describe("resolveWebAppBaseUrl", () => {
       }),
       "https://dev.workza.ai"
     );
+  });
+
+  it("uses https://workza.ai only when envName is production", () => {
+    assert.equal(resolveWebAppBaseUrl({}), "https://dev.workza.ai");
+    assert.equal(resolveWebAppBaseUrl({ envName: "staging" }), "https://dev.workza.ai");
+    assert.equal(resolveWebAppBaseUrl({ envName: "development" }), "https://dev.workza.ai");
+    assert.equal(resolveWebAppBaseUrl({ envName: "production" }), "https://workza.ai");
   });
 });
 
@@ -184,5 +192,17 @@ describe("shouldAllowWebViewRequest", () => {
       shouldAllowWebViewRequest({ url: "https://example.com/leave", isTopFrame: true }, base),
       false
     );
+  });
+});
+
+describe("vendorWebUrl", () => {
+  it("prefixes the vendor slug to a push path", () => {
+    assert.equal(vendorWebUrl(session, "/leave", "https://workza.ai"), "https://workza.ai/acme-corp/leave");
+  });
+
+  it("rejects paths that could leave the web app", () => {
+    for (const path of ["https://evil.example", "//evil.example", "leave", undefined, 42]) {
+      assert.equal(vendorWebUrl(session, path, "https://workza.ai"), null);
+    }
   });
 });

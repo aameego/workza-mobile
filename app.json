@@ -2,7 +2,7 @@
   "expo": {
     "name": "Workza",
     "slug": "AameegoGig-Mobile",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "workza",
@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.aameego.workza",
-      "versionCode": 3,
+      "versionCode": 5,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
@@ -35,7 +35,8 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "softwareKeyboardLayoutMode": "resize",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "server",
@@ -43,6 +44,8 @@
     },
     "plugins": [
       "./plugins/withAndroidAppSize",
+      "./plugins/withAndroidReleaseSigning",
+      "./plugins/withWebViewOneTimePermissions",
       [
         "expo-file-system",
         {
@@ -60,7 +63,15 @@
           "resizeMode": "contain"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#1755a6",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

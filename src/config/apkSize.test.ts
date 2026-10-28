@@ -21,6 +21,8 @@ describe("Android APK size", () => {
 
   it("applies those rules through the Expo config plugin so prebuild cannot revert them", () => {
     assert.ok(app.expo.plugins.includes("./plugins/withAndroidAppSize"));
+    assert.ok(app.expo.plugins.includes("./plugins/withAndroidReleaseSigning"));
+    assert.ok(app.expo.plugins.includes("./plugins/withWebViewOneTimePermissions"));
   });
 
   it("matches the generated gradle.properties when the android folder is present", () => {

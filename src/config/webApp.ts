@@ -1,4 +1,5 @@
 import type { SessionData } from "../auth/types";
+import { resolveAppEnvName } from "./appEnv";
 
 export const PRODUCTION_WEB_URL = "https://workza.ai";
 export const DEVELOPMENT_WEB_URL = "https://dev.workza.ai";
@@ -20,10 +21,7 @@ export const resolveWebAppBaseUrl = ({
   envName?: string;
 } = {}) => {
   if (explicitUrl?.trim()) return trimTrailingSlash(explicitUrl);
-  if (envName && envName in WEB_APP_ENVIRONMENTS) {
-    return WEB_APP_ENVIRONMENTS[envName as keyof typeof WEB_APP_ENVIRONMENTS];
-  }
-  return PRODUCTION_WEB_URL;
+  return WEB_APP_ENVIRONMENTS[resolveAppEnvName(envName)];
 };
 
 export const WEB_APP_BASE_URL = resolveWebAppBaseUrl({
@@ -50,6 +48,13 @@ export const webAppEntryUrl = (
 ) => {
   const base = options ? resolveWebAppBaseUrl(options) : WEB_APP_BASE_URL;
   return `${base}${vendorDashboardPath(session.user)}`;
+};
+
+/** Push `data.path` is vendor-relative (`/leave`); anything else is ignored. */
+export const vendorWebUrl = (session: SessionData, path: unknown, base = WEB_APP_BASE_URL) => {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return null;
+  const slug = toVendorSlug(session.user?.vendorName);
+  return `${base}${slug ? `/${slug}` : ""}${path}`;
 };
 
 export const sessionBootstrapScript = (session: SessionData) => {

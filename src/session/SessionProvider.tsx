@@ -7,6 +7,7 @@ import type { LoginFormValues } from "../auth/loginFormValues";
 import { submitLogin } from "../auth/submitLogin";
 import type { SessionData, SubmitLoginResult } from "../auth/types";
 import { API_BASE_URL } from "../config/api";
+import { mobileClientRequestHeaders } from "../config/mobileClient";
 import { registerPush, unregisterPush } from "../notifications/push";
 import { deviceKeyValueStore } from "./secureStore";
 import { createSessionController, type SessionController } from "./sessionStore";
@@ -34,6 +35,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void controllerRef.current.clear().then(() => setSession(null));
       },
       transport: fetchTransport,
+      extraHeaders: mobileClientRequestHeaders,
     })
   );
 

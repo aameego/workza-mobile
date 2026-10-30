@@ -57,16 +57,23 @@ export const vendorWebUrl = (session: SessionData, path: unknown, base = WEB_APP
   return `${base}${slug ? `/${slug}` : ""}${path}`;
 };
 
-export const sessionBootstrapScript = (session: SessionData) => {
+export const sessionBootstrapScript = (
+  session: SessionData,
+  mobileClient?: { key?: string; version?: string }
+) => {
   const token = JSON.stringify(session.token);
   const user = JSON.stringify(JSON.stringify(session.user));
   const organisations = JSON.stringify(JSON.stringify(session.organisations ?? []));
+  const mobileKey = JSON.stringify(mobileClient?.key || "");
+  const mobileVersion = JSON.stringify(mobileClient?.version || "");
   return `
     (function () {
       try {
         localStorage.setItem('token', ${token});
         localStorage.setItem('user', ${user});
         localStorage.setItem('organisations', ${organisations});
+        localStorage.setItem('workzaMobileClientKey', ${mobileKey});
+        localStorage.setItem('workzaMobileAppVersion', ${mobileVersion});
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('user');
         sessionStorage.removeItem('organisations');

@@ -91,6 +91,12 @@ describe("sessionBootstrapScript", () => {
     assert.match(script, /photoUrl/);
     assert.match(script, /localStorage\.setItem\('organisations',/);
   });
+
+  it("stores the next-build mobile client key for website API calls inside the WebView", () => {
+    const script = sessionBootstrapScript(session, { key: "next-build-secret", version: "1.0.5" });
+    assert.match(script, /localStorage\.setItem\('workzaMobileClientKey', "next-build-secret"\)/);
+    assert.match(script, /localStorage\.setItem\('workzaMobileAppVersion', "1.0.5"\)/);
+  });
 });
 
 describe("isWebAppSignedOutUrl", () => {

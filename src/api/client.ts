@@ -40,18 +40,20 @@ export const createApiClient = ({
   getToken,
   onUnauthorized,
   transport,
+  extraHeaders,
 }: {
   baseUrl: string;
   getToken: () => string | null;
   onUnauthorized: () => void;
   transport: HttpTransport;
+  extraHeaders?: () => Record<string, string>;
 }) => {
   const root = baseUrl.replace(/\/$/, "");
 
   return {
     async request<T>({ path, method, body, auth = true, skipAuthRedirect = false }: ApiRequest): Promise<T> {
       const normalized = path.startsWith("/") ? path : `/${path}`;
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { ...(extraHeaders?.() || {}) };
       if (body !== undefined) headers["Content-Type"] = "application/json";
       const token = auth ? getToken() : null;
       if (token) headers.Authorization = `Bearer ${token}`;

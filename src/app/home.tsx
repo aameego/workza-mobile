@@ -40,6 +40,7 @@ import {
   WEBVIEW_MEDIA_PROPS,
 } from "@/config/webViewMedia";
 import { WEBVIEW_SHELL_PROPS } from "@/config/webViewShell";
+import { MOBILE_APP_VERSION, mobileClientKey } from "@/config/mobileClient";
 import { colors, space } from "@/theme";
 import { AppButton, AppScreen, AppText, BrandLogo } from "@/ui";
 import { useSession } from "@/session/SessionProvider";
@@ -74,7 +75,10 @@ export default function HomeScreen() {
   const bootstrap = useMemo(
     () =>
       session
-        ? `${sessionBootstrapScript(session)}\n${ATTENDANCE_MEDIA_BRIDGE_SCRIPT}\n${DOWNLOAD_BRIDGE_SCRIPT}`
+        ? `${sessionBootstrapScript(session, {
+            key: mobileClientKey(),
+            version: MOBILE_APP_VERSION,
+          })}\n${ATTENDANCE_MEDIA_BRIDGE_SCRIPT}\n${DOWNLOAD_BRIDGE_SCRIPT}`
         : `${ATTENDANCE_MEDIA_BRIDGE_SCRIPT}\n${DOWNLOAD_BRIDGE_SCRIPT}`,
     [session]
   );

@@ -20,6 +20,7 @@ import {
   normalizeForgotOrgCode,
 } from "@/auth/forgotPasswordForm";
 import { API_BASE_URL } from "@/config/api";
+import { mobileClientRequestHeaders } from "@/config/mobileClient";
 import { useSession } from "@/session/SessionProvider";
 import { space } from "@/theme";
 import { AppButton, AppCard, AppField, AppScreen, AppText, BrandLogo } from "@/ui";
@@ -32,6 +33,7 @@ export default function ForgotPasswordScreen() {
       getToken: () => null,
       onUnauthorized: () => {},
       transport: fetchTransport,
+      extraHeaders: mobileClientRequestHeaders,
     })
   ).current;
 

@@ -21,6 +21,24 @@ describe("createApiClient", () => {
     assert.deepEqual(body, { ok: true });
   });
 
+  it("attaches native client headers used to replace the old APK", async () => {
+    const client = createApiClient({
+      baseUrl: "https://backend-gig.aameego.com/api",
+      getToken: () => null,
+      onUnauthorized: () => {},
+      extraHeaders: () => ({
+        "X-Workza-Client-Key": "next-build-secret",
+        "X-Workza-App-Version": "1.0.5",
+      }),
+      transport: async (request) => {
+        assert.equal(request.headers["X-Workza-Client-Key"], "next-build-secret");
+        assert.equal(request.headers["X-Workza-App-Version"], "1.0.5");
+        return { status: 200, body: { ok: true } };
+      },
+    });
+    await client.request({ path: "/auth/login", method: "POST", body: {}, auth: false });
+  });
+
   it("clears the session on a protected 401 and keeps a login 401 on the form", async () => {
     let cleared = 0;
     const client = createApiClient({
